@@ -3,31 +3,35 @@
  * Copyright (C) Luong Thanh Lam <ltlam93@gmail.com>
  *
  * This software is licensed under the MIT license. For more information,
- * see <https://github.com/BambooEngine/bamboo-core/blob/master/LISENCE>.
+ * see <https://github.com/BambooEngine/bamboo-core/blob/master/LICENSE>.
  */
+
 package bamboo
 
-import "unicode"
+import (
+	"unicode"
+)
 
 var Vowels = []rune("aàáảãạăằắẳẵặâầấẩẫậeèéẻẽẹêềếểễệiìíỉĩịoòóỏõọôồốổỗộơờớởỡợuùúủũụưừứửữựyỳýỷỹỵ")
 
-var WordBreakSymbols = []rune{
+var PunctuationMarks = []rune{
 	',', ';', ':', '.', '"', '\'', '!', '?', ' ',
 	'<', '>', '=', '+', '-', '*', '/', '\\',
 	'_', '~', '`', '@', '#', '$', '%', '^', '&', '(', ')', '{', '}', '[', ']',
 	'|',
 }
 
-func IsWordBreakSymbol(key rune) bool {
-	if key >= '0' && key <= '9' {
-		return true
-	}
-	for _, c := range WordBreakSymbols {
+func IsPunctuationMark(key rune) bool {
+	for _, c := range PunctuationMarks {
 		if c == key {
 			return true
 		}
 	}
 	return false
+}
+
+func IsWordBreakSymbol(key rune) bool {
+	return IsPunctuationMark(key) || ('0' <= key && '9' >= key)
 }
 
 func IsVowel(chr rune) bool {
@@ -38,15 +42,6 @@ func IsVowel(chr rune) bool {
 		}
 	}
 	return isVowel
-}
-
-func HasVowel(seq []rune) bool {
-	for _, s := range seq {
-		if IsVowel(s) {
-			return true
-		}
-	}
-	return false
 }
 
 func FindVowelPosition(chr rune) int {
@@ -76,7 +71,7 @@ var marksMaps = map[rune]string{
 func getMarkFamily(chr rune) []rune {
 	var result []rune
 	if s, found := marksMaps[chr]; found {
-		for _, c := range []rune(s) {
+		for _, c := range s {
 			if c != '_' {
 				result = append(result, c)
 			}
@@ -104,41 +99,25 @@ func FindMarkFromChar(chr rune) (Mark, bool) {
 	return 0, false
 }
 
-func RemoveMarkFromChar(chr rune) rune {
+func AddMarkToTonelessChar(chr rune, mark uint8) rune {
 	if str, found := marksMaps[chr]; found {
 		marks := []rune(str)
-		if len(marks) > 0 {
-			return marks[0]
+		if marks[mark] != '_' {
+			return marks[mark]
 		}
 	}
 	return chr
 }
 
 func AddMarkToChar(chr rune, mark uint8) rune {
-	var result rune
 	tone := FindToneFromChar(chr)
 	chr = AddToneToChar(chr, 0)
-	if str, found := marksMaps[chr]; found {
-		marks := []rune(str)
-		if marks[mark] != '_' {
-			result = marks[mark]
-		}
-	}
-	result = AddToneToChar(result, uint8(tone))
-	return result
+	chr = AddMarkToTonelessChar(chr, mark)
+	return AddToneToChar(chr, uint8(tone))
 }
 
 func IsAlpha(c rune) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func findIndexRune(chars []rune, r rune) int {
-	for i, c := range chars {
-		if c == r {
-			return i
-		}
-	}
-	return -1
 }
 
 func inKeyList(keys []rune, key rune) bool {
@@ -153,7 +132,7 @@ func inKeyList(keys []rune, key rune) bool {
 func FindToneFromChar(chr rune) Tone {
 	pos := FindVowelPosition(chr)
 	if pos == -1 {
-		return TONE_NONE
+		return ToneNone
 	}
 	return Tone(pos % 6)
 }
@@ -161,31 +140,35 @@ func FindToneFromChar(chr rune) Tone {
 func AddToneToChar(chr rune, tone uint8) rune {
 	pos := FindVowelPosition(chr)
 	if pos > -1 {
-		current_tone := pos % 6
-		offset := int(tone) - current_tone
+		currentTone := pos % 6
+		offset := int(tone) - currentTone
 		return Vowels[pos+offset]
 	} else {
 		return chr
 	}
 }
 
-func RemoveToneFromWord(word string) string {
-	var chars = []rune(word)
-	for i, c := range chars {
-		if IsVowel(c) {
-			chars[i] = AddToneToChar(c, 0)
-		}
+func canProcessKey(lowerKey rune, effectKeys []rune) bool {
+	if IsAlpha(lowerKey) || inKeyList(effectKeys, lowerKey) {
+		return true
 	}
-	return string(chars)
+	if IsWordBreakSymbol(lowerKey) {
+		return false
+	}
+	return IsVietnameseRune(lowerKey)
 }
 
-func HasVietnameseChar(word string) bool {
-	for _, chr := range []rune(word) {
-		var c = unicode.ToLower(chr)
-		if FindToneFromChar(c) != TONE_NONE {
-			return true
-		}
-		if mark, found := FindMarkFromChar(AddToneToChar(c, 0)); found && mark != MARK_NONE {
+func IsVietnameseRune(lowerKey rune) bool {
+	// lowerKey = unicode.ToLower(lowerKey)
+	if FindToneFromChar(lowerKey) != ToneNone {
+		return true
+	}
+	return lowerKey != AddMarkToTonelessChar(lowerKey, 0)
+}
+
+func HasAnyVietnameseRune(word string) bool {
+	for _, chr := range word {
+		if IsVietnameseRune(unicode.ToLower(chr)) {
 			return true
 		}
 	}

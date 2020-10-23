@@ -3,8 +3,9 @@
  * Copyright (C) Luong Thanh Lam <ltlam93@gmail.com>
  *
  * This software is licensed under the MIT license. For more information,
- * see <https://github.com/BambooEngine/bamboo-core/blob/master/LISENCE>.
+ * see <https://github.com/BambooEngine/bamboo-core/blob/master/LICENSE>.
  */
+
 package bamboo
 
 import (
@@ -27,6 +28,10 @@ func getCanvas(composition []*Transformation, mode Mode) []rune {
 			}
 			appendingList = append(appendingList, trans)
 		} else if trans.Rule.EffectType == Appending {
+			if trans.Rule.Key == 0 {
+				// ignore virtual key
+				continue
+			}
 			appendingList = append(appendingList, trans)
 		} else if trans.Target != nil {
 			appendingMap[trans.Target] = append(appendingMap[trans.Target], trans)
@@ -39,30 +44,24 @@ func getCanvas(composition []*Transformation, mode Mode) []rune {
 			chr = appendingTrans.Rule.Key
 		} else {
 			chr = appendingTrans.Rule.EffectOn
-			if mode&MarkLess != 0 && (chr < 'a' || chr > 'z') {
-				chr = RemoveMarkFromChar(chr)
-			}
 			for _, trans := range transList {
 				switch trans.Rule.EffectType {
 				case MarkTransformation:
-					if mode&MarkLess != 0 {
-						break
-					}
-					if trans.Rule.Effect == uint8(MARK_RAW) {
+					if trans.Rule.Effect == uint8(MarkRaw) {
 						chr = appendingTrans.Rule.Key
 					} else {
 						chr = AddMarkToChar(chr, trans.Rule.Effect)
 					}
 				case ToneTransformation:
-					if mode&ToneLess != 0 {
-						break
-					}
 					chr = AddToneToChar(chr, trans.Rule.Effect)
 				}
 			}
 		}
 		if mode&ToneLess != 0 {
 			chr = AddToneToChar(chr, 0)
+		}
+		if mode&MarkLess != 0 {
+			chr = AddMarkToChar(chr, 0)
 		}
 		if mode&LowerCase != 0 {
 			chr = unicode.ToLower(chr)

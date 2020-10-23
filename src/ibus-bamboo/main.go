@@ -22,11 +22,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/BambooEngine/bamboo-core"
-	"github.com/BambooEngine/goibus/ibus"
-	"github.com/godbus/dbus"
 	"log"
 	"os"
+	"strings"
+
+	"github.com/BambooEngine/goibus/ibus"
 )
 
 const (
@@ -36,24 +36,28 @@ const (
 
 var embedded = flag.Bool("ibus", false, "Run the embedded ibus component")
 var version = flag.Bool("version", false, "Show version")
+var isWayland = false
+var isGnome = false
 
-func init() {
+func hasGnome(env string) bool {
+	return strings.Contains(strings.ToLower(os.Getenv(env)), "gnome")
+}
+
+func main() {
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		isWayland = true
+	}
+	if hasGnome("XDG_CURRENT_DESKTOP") || hasGnome("DESKTOP_SESSION") || hasGnome("GDMSESSION") {
+		isGnome = true
+	}
 	flag.Parse()
 	if *embedded {
 		os.Chdir(DataDir)
 	}
-	go func() {
-		emojiMap, _ = loadEmojiOne(DictEmojiOne)
-		var dictionary, _ = loadDictionary(DictVietnameseCm)
-		bamboo.AddDictionaryToSpellingTrie(dictionary)
-	}()
-}
-
-func main() {
 	if *version {
 		fmt.Println(Version)
 	} else if *embedded {
-		engine := GetBambooEngineCreator()
+		engine := GetIBusEngineCreator()
 		bus := ibus.NewBus()
 		bus.RequestName(ComponentName, 0)
 
@@ -77,15 +81,10 @@ func main() {
 		bus.RegisterComponent(component)
 
 		conn := bus.GetDbusConn()
-		ibus.NewFactory(conn, GetBambooEngineCreator())
+		ibus.NewFactory(conn, GetIBusEngineCreator())
 
 		bus.CallMethod("SetGlobalEngine", 0, EngineName+"Standalone")
 
-		c := make(chan *dbus.Signal, 10)
-		conn.Signal(c)
-
-		select {
-		case <-c:
-		}
+		select {}
 	}
 }

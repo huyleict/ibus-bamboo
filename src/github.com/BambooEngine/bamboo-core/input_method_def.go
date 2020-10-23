@@ -3,13 +3,13 @@
  * Copyright (C) Luong Thanh Lam <ltlam93@gmail.com>
  *
  * This software is licensed under the MIT license. For more information,
- * see <https://github.com/BambooEngine/bamboo-core/blob/master/LISENCE>.
+ * see <https://github.com/BambooEngine/bamboo-core/blob/master/LICENSE>.
  */
+
 package bamboo
 
 type InputMethodDefinition map[string]string
 
-// todo: move to input_method.json
 var InputMethodDefinitions = map[string]InputMethodDefinition{
 	"Telex": {
 		"z": "XoaDauThanh",
@@ -36,7 +36,6 @@ var InputMethodDefinitions = map[string]InputMethodDefinition{
 		"8": "A_Ă",
 		"9": "D_Đ",
 	},
-
 	"VIQR": {
 		"0":  "XoaDauThanh",
 		"'":  "DauSac",
@@ -156,7 +155,7 @@ var InputMethodDefinitions = map[string]InputMethodDefinition{
 		"ç":  "A_Ă",
 		"à":  "D_Đ",
 	},
-	"Telex 3": {
+	"Telex W": {
 		"z": "XoaDauThanh",
 		"s": "DauSac",
 		"f": "DauHuyen",
@@ -166,9 +165,15 @@ var InputMethodDefinitions = map[string]InputMethodDefinition{
 		"a": "A_Â",
 		"e": "E_Ê",
 		"o": "O_Ô",
-		"w": "UOA_ƯƠĂ",
+		"w": "UOA_ƯƠĂ__Ư",
 		"d": "D_Đ",
-		"[": "__ươ",
-		"{": "_ƯƠ",
 	},
+}
+
+func GetInputMethodDefinitions() map[string]InputMethodDefinition {
+	var t = make(map[string]InputMethodDefinition)
+	for k, v := range InputMethodDefinitions {
+		t[k] = v
+	}
+	return t
 }

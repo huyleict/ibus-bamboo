@@ -3,8 +3,9 @@
  * Copyright (C) Luong Thanh Lam <ltlam93@gmail.com>
  *
  * This software is licensed under the MIT license. For more information,
- * see <https://github.com/BambooEngine/bamboo-core/blob/master/LISENCE>.
+ * see <https://github.com/BambooEngine/bamboo-core/blob/master/LICENSE>.
  */
+
 package bamboo
 
 const UNICODE = "Unicode"
@@ -15,7 +16,7 @@ func Encode(charsetName string, input string) string {
 	}
 	var output string
 	if charset, found := charsetDefinitions[charsetName]; found {
-		for _, chr := range []rune(input) {
+		for _, chr := range input {
 			if out, found := charset[chr]; found {
 				output = output + out
 			} else {

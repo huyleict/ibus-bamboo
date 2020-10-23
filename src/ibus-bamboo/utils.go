@@ -23,7 +23,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/BambooEngine/bamboo-core"
 	"io/ioutil"
 	"log"
 	"os"
@@ -32,10 +31,12 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/BambooEngine/bamboo-core"
 )
 
 const (
-	VnCaseAllSmall uint8 = 1 << iota
+	VnCaseAllSmall uint8 = iota + 1
 	VnCaseAllCapital
 	VnCaseNoChange
 )
@@ -49,33 +50,51 @@ const (
 )
 
 const (
-	configDir        = "%s/.config/ibus-bamboo"
+	configDir        = "%s/.config/ibus-%s"
 	configFile       = "%s/ibus-%s.config.json"
 	mactabFile       = "%s/ibus-%s.macro.text"
 	sampleMactabFile = "data/macro.tpl.txt"
 )
 
 const (
+	preeditIM = iota + 1
+	surroundingTextIM
+	backspaceForwardingIM
+	shiftLeftForwardingIM
+	forwardAsCommitIM
+	xTestFakeKeyEventIM
+	usIM
+)
+
+const (
 	IBautoCommitWithVnNotMatch uint = 1 << iota
-	IBmarcoEnabled
+	IBmacroEnabled
 	IBautoCommitWithVnFullMatch
 	IBautoCommitWithVnWordBreak
-	IBspellChecking
+	IBspellCheckEnabled
 	IBautoNonVnRestore
 	IBddFreeStyle
 	IBpreeditInvisibility
-	IBspellCheckingWithRules
-	IBspellCheckingWithDicts
+	IBspellCheckWithRules
+	IBspellCheckWithDicts
 	IBautoCommitWithDelay
 	IBautoCommitWithMouseMovement
 	IBemojiDisabled
-	IBfakeBackspaceEnabled
+	IBpreeditElimination
 	IBinputModeLookupTableEnabled
 	IBautoCapitalizeMacro
 	IBimQuickSwitchEnabled
 	IBrestoreKeyStrokesEnabled
-	IBstdFlags = IBspellChecking | IBspellCheckingWithRules | IBautoNonVnRestore | IBddFreeStyle |
-		IBpreeditInvisibility | IBautoCommitWithMouseMovement | IBemojiDisabled | IBinputModeLookupTableEnabled
+	IBmouseCapturing
+	IBstdFlags = IBspellCheckEnabled | IBspellCheckWithRules | IBautoNonVnRestore | IBddFreeStyle |
+		IBemojiDisabled | IBinputModeLookupTableEnabled | IBmouseCapturing
+)
+
+const (
+	JemojiEnabled uint = 1 << iota
+	JmacroEnabled
+	JmacroAutoCapitalize
+	JstdFlags = JmacroAutoCapitalize
 )
 
 var DefaultBrowserList = []string{
@@ -84,58 +103,69 @@ var DefaultBrowserList = []string{
 	"chromium-browser:Chromium-browser",
 }
 
-type Config struct {
-	InputMethod               string
-	InputMethodDefinitions    map[string]bamboo.InputMethodDefinition
-	OutputCharset             string
-	Flags                     uint
-	IBflags                   uint
-	AutoCommitAfter           int64
-	ExceptedList              []string
-	PreeditWhiteList          []string
-	X11ClipboardWhiteList     []string
-	ForwardKeyWhiteList       []string
-	SLForwardKeyWhiteList     []string
-	DirectForwardKeyWhiteList []string
-	SurroundingTextWhiteList  []string
-	X11ShiftLeftWhiteList     []string
+var imLookupTable = map[int]string{
+	preeditIM:             "Cấu hình mặc định (Pre-edit)",
+	surroundingTextIM:     "Sửa lỗi gạch chân (Surrounding Text)",
+	backspaceForwardingIM: "Sửa lỗi gạch chân (ForwardKeyEvent I)",
+	shiftLeftForwardingIM: "Sửa lỗi gạch chân (ForwardKeyEvent II)",
+	forwardAsCommitIM:     "Sửa lỗi gạch chân (Forward as commit)",
+	xTestFakeKeyEventIM:   "Sửa lỗi gạch chân (XTestFakeKeyEvent)",
+	usIM:                  "Thêm vào danh sách loại trừ",
 }
 
-func getConfigDir() string {
+var imBackspaceList = []int{
+	surroundingTextIM,
+	backspaceForwardingIM,
+	shiftLeftForwardingIM,
+	forwardAsCommitIM,
+	xTestFakeKeyEventIM,
+}
+
+type Config struct {
+	InputMethod            string
+	InputMethodDefinitions map[string]bamboo.InputMethodDefinition
+	OutputCharset          string
+	Flags                  uint
+	IBflags                uint
+	JupiterFlags           uint
+	DefaultInputMode       int
+	InputModeMapping       map[string]int
+}
+
+func getConfigDir(ngName string) string {
 	u, err := user.Current()
 	if err == nil {
-		return fmt.Sprintf(configDir, u.HomeDir)
+		return fmt.Sprintf(configDir, u.HomeDir, ngName)
 	}
-	return fmt.Sprintf(configDir, "~")
+	return fmt.Sprintf(configDir, "~", ngName)
 }
 
-func setupConfigDir() {
-	if sta, err := os.Stat(getConfigDir()); err != nil || !sta.IsDir() {
-		os.Mkdir(getConfigDir(), 0777)
+func setupConfigDir(ngName string) {
+	if sta, err := os.Stat(getConfigDir(ngName)); err != nil || !sta.IsDir() {
+		os.Mkdir(getConfigDir(ngName), 0777)
 	}
 }
 
 func getConfigPath(engineName string) string {
-	return fmt.Sprintf(configFile, getConfigDir(), engineName)
+	return fmt.Sprintf(configFile, getConfigDir(engineName), engineName)
 }
 
-func LoadConfig(engineName string) *Config {
+func loadConfig(engineName string) *Config {
+	var flags = IBstdFlags
+	if isGnome {
+		flags &= ^IBmouseCapturing
+	}
 	var c = Config{
-		InputMethod:               "Telex",
-		OutputCharset:             "Unicode",
-		InputMethodDefinitions:    bamboo.InputMethodDefinitions,
-		Flags:                     bamboo.EstdFlags,
-		IBflags:                   IBstdFlags,
-		AutoCommitAfter:           3000,
-		ExceptedList:              nil,
-		PreeditWhiteList:          nil,
-		X11ClipboardWhiteList:     nil,
-		ForwardKeyWhiteList:       nil,
-		SLForwardKeyWhiteList:     nil,
-		DirectForwardKeyWhiteList: nil,
-		SurroundingTextWhiteList:  nil,
+		InputMethod:            "Telex",
+		OutputCharset:          "Unicode",
+		InputMethodDefinitions: bamboo.GetInputMethodDefinitions(),
+		Flags:                  bamboo.EstdFlags,
+		IBflags:                flags,
+		DefaultInputMode:       preeditIM,
+		InputModeMapping:       map[string]int{},
 	}
 
+	setupConfigDir(engineName)
 	data, err := ioutil.ReadFile(getConfigPath(engineName))
 	if err == nil {
 		json.Unmarshal(data, &c)
@@ -144,13 +174,13 @@ func LoadConfig(engineName string) *Config {
 	return &c
 }
 
-func SaveConfig(c *Config, engineName string) {
+func saveConfig(c *Config, engineName string) {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return
 	}
 
-	err = ioutil.WriteFile(fmt.Sprintf(configFile, getConfigDir(), engineName), data, 0644)
+	err = ioutil.WriteFile(fmt.Sprintf(configFile, getConfigDir(engineName), engineName), data, 0644)
 	if err != nil {
 		log.Println(err)
 	}
@@ -181,18 +211,13 @@ func determineMacroCase(str string) uint8 {
 	return VnCaseAllCapital
 }
 
-func toUpper(keyRune rune) rune {
-	var upperSpecialKeys = map[rune]rune{
-		'[': '{',
-		']': '}',
+func inKeyList(list []rune, key rune) bool {
+	for _, s := range list {
+		if s == key {
+			return true
+		}
 	}
-
-	if upperSpecialKey, found := upperSpecialKeys[keyRune]; found {
-		keyRune = upperSpecialKey
-	} else {
-		keyRune = unicode.ToUpper(keyRune)
-	}
-	return keyRune
+	return false
 }
 
 func inStringList(list []string, str string) bool {
@@ -223,9 +248,9 @@ func addToWhiteList(list []string, classes string) []string {
 	return append(list, classes)
 }
 
-func getCharsetFromPropKey(str string) (string, bool) {
+func getValueFromPropKey(str, key string) (string, bool) {
 	var arr = strings.Split(str, "::")
-	if len(arr) == 2 {
+	if len(arr) == 2 && arr[0] == key {
 		return arr[1], true
 	}
 	return str, false
@@ -260,7 +285,7 @@ func sortStrings(list []string) []string {
 }
 
 func loadDictionary(dataFiles ...string) (map[string]bool, error) {
-	var dictionary = map[string]bool{}
+	var data = map[string]bool{}
 	for _, dataFile := range dataFiles {
 		f, err := os.Open(dataFile)
 		if err != nil {
@@ -275,12 +300,23 @@ func loadDictionary(dataFiles ...string) (map[string]bool, error) {
 			if len(line) == 0 {
 				continue
 			}
-			dictionary[strings.ToLower(string(line))] = true
+			var tmp = []byte(strings.ToLower(string(line)))
+			data[string(tmp)] = true
 			//bamboo.AddTrie(rootWordTrie, []rune(string(line)), false)
 		}
 		f.Close()
 	}
-	return dictionary, nil
+	return data, nil
+}
+
+func isMovementKey(keyVal uint32) bool {
+	var list = []uint32{IBusLeft, IBusRight, IBusUp, IBusDown, IBusPageDown, IBusPageUp, IBusEnd}
+	for _, item := range list {
+		if item == keyVal {
+			return true
+		}
+	}
+	return false
 }
 
 var vnSymMapping = map[rune]uint32{

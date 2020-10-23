@@ -3,12 +3,15 @@
  * Copyright (C) Luong Thanh Lam <ltlam93@gmail.com>
  *
  * This software is licensed under the MIT license. For more information,
- * see <https://github.com/BambooEngine/bamboo-core/blob/master/LISENCE>.
+ * see <https://github.com/BambooEngine/bamboo-core/blob/master/LICENSE>.
  */
 
+// Package bamboo implements text processing for Vietnamese
 package bamboo
 
-import "unicode"
+import (
+	"unicode"
+)
 
 type Mode uint
 
@@ -18,15 +21,9 @@ const (
 	ToneLess
 	MarkLess
 	LowerCase
-)
-
-type Sound uint
-
-const (
-	NoSound             Sound = iota << 0
-	FirstConsonantSound Sound = iota
-	VowelSound          Sound = iota
-	LastConsonantSound  Sound = iota
+	FullText
+	PunctuationMode
+	InReverseOrder
 )
 
 const (
@@ -48,11 +45,10 @@ type IEngine interface {
 	ProcessKey(rune, Mode)
 	ProcessString(string, Mode)
 	GetProcessedString(Mode) string
-	GetSpellingMatchResult(Mode, bool) uint8
+	IsValid(bool) bool
 	CanProcessKey(rune) bool
-	RemoveLastChar()
+	RemoveLastChar(bool)
 	RestoreLastWord()
-	GetRawString() string
 	Reset()
 }
 
@@ -82,15 +78,8 @@ func (e *BambooEngine) GetFlag(flag uint) uint {
 	return e.flags
 }
 
-func (e *BambooEngine) isSuperKey(key rune) bool {
-	return inKeyList(e.GetInputMethod().SuperKeys, key)
-}
-
-func (e *BambooEngine) isSupportedKey(key rune) bool {
-	if IsAlpha(key) {
-		return true
-	}
-	return inKeyList(e.GetInputMethod().Keys, key)
+func (e *BambooEngine) isSuperKey(lowerKey rune) bool {
+	return inKeyList(e.GetInputMethod().SuperKeys, lowerKey)
 }
 
 func (e *BambooEngine) isToneKey(key rune) bool {
@@ -101,25 +90,22 @@ func (e *BambooEngine) isEffectiveKey(key rune) bool {
 	return inKeyList(e.GetInputMethod().Keys, key)
 }
 
-func (e *BambooEngine) GetSpellingMatchResult(mode Mode, dictionary bool) uint8 {
-	return getSpellingMatchResult(getLastWord(e.composition, e.inputMethod.Keys), mode, dictionary)
-}
-
-func (e *BambooEngine) GetRawString() string {
-	var seq []rune
-	for _, t := range e.composition {
-		seq = append(seq, t.Rule.Key)
-	}
-	return string(seq)
+func (e *BambooEngine) IsValid(inputIsFullComplete bool) bool {
+	var _, last = extractLastWord(e.composition, e.GetInputMethod().Keys)
+	return isValid(last, inputIsFullComplete)
 }
 
 func (e *BambooEngine) GetProcessedString(mode Mode) string {
-	var effectiveKeys = e.inputMethod.Keys
-	var lastComb = getLastWord(e.composition, effectiveKeys)
-	if len(lastComb) > 0 {
-		return Flatten(lastComb, mode)
+	var tmp []*Transformation
+	if mode&FullText != 0 {
+		tmp = e.composition
+	} else if mode&PunctuationMode != 0 {
+		_, tmp = extractLastPunctuationMarks(e.composition, e.inputMethod.Keys)
+		return Flatten(tmp, EnglishMode)
+	} else {
+		_, tmp = extractLastWord(e.composition, e.inputMethod.Keys)
 	}
-	return ""
+	return Flatten(tmp, mode)
 }
 
 func (e *BambooEngine) getApplicableRules(key rune) []Rule {
@@ -137,30 +123,7 @@ func (e *BambooEngine) findTargetByKey(composition []*Transformation, key rune) 
 }
 
 func (e *BambooEngine) CanProcessKey(key rune) bool {
-	return e.isSupportedKey(key)
-}
-
-func (e *BambooEngine) ProcessString(str string, mode Mode) {
-	for _, key := range []rune(str) {
-		e.ProcessKey(key, mode)
-	}
-}
-
-func (e *BambooEngine) ProcessKey(key rune, mode Mode) {
-	var lowerKey = unicode.ToLower(key)
-	var isUpperCase = unicode.IsUpper(key)
-	if mode&EnglishMode != 0 || !e.isSupportedKey(lowerKey) {
-		e.composition = append(e.composition, newAppendingTrans(lowerKey, isUpperCase))
-		return
-	}
-	// Just process the key stroke on the last syllable
-	var lastSyllable, previousTransformations = extractLastSyllable(e.composition)
-
-	// Find all possible transformations this keypress can generate
-	lastSyllable = append(lastSyllable, e.generateTransformations(lastSyllable, lowerKey, isUpperCase)...)
-
-	// Put these transformations back to the composition
-	e.composition = append(previousTransformations, lastSyllable...)
+	return canProcessKey(key, e.inputMethod.Keys)
 }
 
 func (e *BambooEngine) generateTransformations(composition []*Transformation, lowerKey rune, isUpperCase bool) []*Transformation {
@@ -168,10 +131,10 @@ func (e *BambooEngine) generateTransformations(composition []*Transformation, lo
 	if transformations == nil {
 		// If none of the applicable_rules can actually be applied then this new
 		// transformation fall-backs to an APPENDING one.
-		transformations = generateFallbackTransformations(e.getApplicableRules(lowerKey), lowerKey, isUpperCase)
+		transformations = generateFallbackTransformations(composition, e.getApplicableRules(lowerKey), lowerKey, isUpperCase)
 		var newComposition = append(composition, transformations...)
 
-		// Implement the uow typing shortcut by creating a virtual
+		// Implement the uwo+ typing shortcut by creating a virtual
 		// Mark.HORN rule that targets 'u' or 'o'.
 		if virtualTrans := e.applyUowShortcut(newComposition); virtualTrans != nil {
 			transformations = append(transformations, virtualTrans)
@@ -190,7 +153,7 @@ func (e *BambooEngine) generateTransformations(composition []*Transformation, lo
 
 func (e *BambooEngine) applyUowShortcut(syllable []*Transformation) *Transformation {
 	str := Flatten(syllable, ToneLess|LowerCase)
-	if len(e.inputMethod.SuperKeys) > 0 && regUOh_UhO_Tail.MatchString(str) {
+	if len(e.inputMethod.SuperKeys) > 0 && regUOhTail.MatchString(str) {
 		if target, missingRule := e.findTargetByKey(syllable, e.inputMethod.SuperKeys[0]); target != nil {
 			missingRule.Key = rune(0) // virtual rule should not appear in the raw string
 			virtualTrans := &Transformation{
@@ -204,7 +167,7 @@ func (e *BambooEngine) applyUowShortcut(syllable []*Transformation) *Transformat
 }
 
 func (e *BambooEngine) refreshLastToneTarget(syllable []*Transformation) []*Transformation {
-	if e.flags&EfreeToneMarking != 0 && getSpellingMatchResult(syllable, ToneLess|LowerCase, false) != FindResultNotMatch {
+	if e.flags&EfreeToneMarking != 0 && isValid(syllable, false) {
 		return refreshLastToneTarget(syllable, e.flags&EstdToneStyle != 0)
 	}
 	return nil
@@ -212,8 +175,35 @@ func (e *BambooEngine) refreshLastToneTarget(syllable []*Transformation) []*Tran
 
 /***** BEGIN SIDE-EFFECT METHODS ******/
 
+func (e *BambooEngine) ProcessString(str string, mode Mode) {
+	for _, key := range str {
+		e.ProcessKey(key, mode)
+	}
+}
+
+func (e *BambooEngine) ProcessKey(key rune, mode Mode) {
+	var lowerKey = unicode.ToLower(key)
+	var isUpperCase = unicode.IsUpper(key)
+	if mode&EnglishMode != 0 || !e.CanProcessKey(lowerKey) {
+		if mode&InReverseOrder != 0 {
+			e.composition = append([]*Transformation{newAppendingTrans(lowerKey, isUpperCase)}, e.composition...)
+			return
+		}
+		e.composition = append(e.composition, newAppendingTrans(lowerKey, isUpperCase))
+		return
+	}
+	// Just process the key stroke on the last syllable
+	var previousTransformations, lastSyllable = extractLastSyllable(e.composition)
+
+	// Find all possible transformations this keypress can generate
+	lastSyllable = append(lastSyllable, e.generateTransformations(lastSyllable, lowerKey, isUpperCase)...)
+
+	// Put these transformations back to the composition
+	e.composition = append(previousTransformations, lastSyllable...)
+}
+
 func (e *BambooEngine) RestoreLastWord() {
-	var lastComb, previous = extractLastWord(e.composition, e.inputMethod.Keys)
+	var previous, lastComb = extractLastWord(e.composition, e.GetInputMethod().Keys)
 	if len(lastComb) == 0 {
 		return
 	}
@@ -226,7 +216,7 @@ func (e *BambooEngine) Reset() {
 
 // Find the last APPENDING transformation and all
 // the transformations that add effects to it.
-func (e *BambooEngine) RemoveLastChar() {
+func (e *BambooEngine) RemoveLastChar(refreshLastToneTarget bool) {
 	var lastAppending = findLastAppendingTrans(e.composition)
 	if lastAppending == nil {
 		return
@@ -235,7 +225,7 @@ func (e *BambooEngine) RemoveLastChar() {
 		e.composition = e.composition[:len(e.composition)-1]
 		return
 	}
-	var lastComb, previous = extractLastWord(e.composition, e.inputMethod.Keys)
+	var previous, lastComb = extractLastWord(e.composition, e.GetInputMethod().Keys)
 	var newComb []*Transformation
 	for _, t := range lastComb {
 		if t.Target == lastAppending || t == lastAppending {
@@ -243,7 +233,9 @@ func (e *BambooEngine) RemoveLastChar() {
 		}
 		newComb = append(newComb, t)
 	}
-	newComb = append(newComb, e.refreshLastToneTarget(newComb)...)
+	if refreshLastToneTarget {
+		newComb = append(newComb, e.refreshLastToneTarget(newComb)...)
+	}
 	e.composition = append(previous, newComb...)
 }
 

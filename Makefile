@@ -15,13 +15,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+PREFIX=/usr
+
 engine_name=bamboo
 ibus_e_name=ibus-engine-$(engine_name)
 pkg_name=ibus-$(engine_name)
-version=0.5.4
+version=0.6.7
 
-engine_dir=/usr/share/$(pkg_name)
-ibus_dir=/usr/share/ibus
+engine_dir=$(PREFIX)/share/$(pkg_name)
+ibus_dir=$(PREFIX)/share/ibus
 
 GOPATH=$(shell pwd)/vendor:$(shell pwd)
 
@@ -29,9 +31,6 @@ rpm_src_dir=~/rpmbuild/SOURCES
 tar_file=$(pkg_name)-$(version).tar.gz
 rpm_src_tar=$(rpm_src_dir)/$(tar_file)
 tar_options_src=--transform "s/^\./$(pkg_name)-$(version)/" --exclude={"*.tar.gz",".git",".idea"} .
-
-test:
-	GOPATH=$(CURDIR) go test ibus-$(engine_name)
 
 build:
 	GOPATH=$(CURDIR) go build -ldflags="-s -w" -o $(ibus_e_name) ibus-$(engine_name)
@@ -46,17 +45,17 @@ clean:
 
 install: build
 	mkdir -p $(DESTDIR)$(engine_dir)
-	mkdir -p $(DESTDIR)/usr/lib/
+	mkdir -p $(DESTDIR)$(PREFIX)/lib/
 	mkdir -p $(DESTDIR)$(ibus_dir)/component/
 
 	cp -R -f viet-on.png data $(DESTDIR)$(engine_dir)
-	cp -f $(ibus_e_name) $(DESTDIR)/usr/lib/
+	cp -f $(ibus_e_name) $(DESTDIR)$(PREFIX)/lib/
 	cp -f $(engine_name).xml $(DESTDIR)$(ibus_dir)/component/
 
 
 uninstall:
 	sudo rm -rf $(DESTDIR)$(engine_dir)
-	sudo rm -f $(DESTDIR)/usr/lib/$(ibus_e_name)
+	sudo rm -f $(DESTDIR)$(PREFIX)/lib/$(ibus_e_name)
 	sudo rm -f $(DESTDIR)$(ibus_dir)/component/$(engine_name).xml
 
 
@@ -74,11 +73,8 @@ rpm: clean
 	tar -zcf $(rpm_src_tar) $(tar_options_src)
 	rpmbuild $(pkg_name).spec -ba
 
-
-#start ubuntu docker:   docker  run  -v `pwd`:`pwd` -w `pwd` -i -t  ubuntu bash
-#install buildpackages: apt update && apt install dh-make golang libx11-dev -y
 deb: clean
 	dpkg-buildpackage
 
 
-.PHONY: test build clean build install uninstall src rpm deb
+.PHONY: build clean build install uninstall src rpm deb

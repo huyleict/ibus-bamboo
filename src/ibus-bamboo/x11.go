@@ -32,6 +32,7 @@ extern void x11ClipboardReset();
 extern void mouse_capture_init();
 extern void mouse_capture_exit();
 extern void mouse_capture_unlock();
+extern void mouse_capture_start_or_unlock();
 extern void mouse_recording_init();
 extern void mouse_recording_exit();
 extern void x11SendBackspace(int n, int timeout);
@@ -62,18 +63,28 @@ func mouse_click_handler() {
 var onMouseMove func()
 var onMouseClick func()
 
-func startMouseTracking() {
+func startMouseRecording() {
 	C.mouse_recording_init()
-	// C.mouse_capture_init() // pre-edit only
 }
 
-func stopMouseTracking() {
+func stopMouseRecording() {
 	C.mouse_recording_exit()
-	// C.mouse_capture_exit()
+}
+
+func startMouseCapturing() {
+	C.mouse_capture_init()
+}
+
+func stopMouseCapturing() {
+	C.mouse_capture_exit()
+}
+
+func mouseCaptureStartOrUnlock() {
+	C.mouse_capture_start_or_unlock()
 }
 
 func mouseCaptureUnlock() {
-	// C.mouse_capture_unlock()
+	C.mouse_capture_unlock()
 }
 
 func x11Copy(str string) {

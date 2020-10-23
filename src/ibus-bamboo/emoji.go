@@ -16,11 +16,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
 package main
 
 import (
 	"encoding/json"
-	"github.com/BambooEngine/bamboo-core"
 	"io/ioutil"
 	"sort"
 	"strconv"
@@ -31,65 +31,62 @@ type EmojiOne struct {
 	Name      string
 	Shortname string
 	Keywords  []string
-	Ascii     []string
+	ASCII     []string
 }
 
-var emojiMap map[string]EmojiOne
-
-func loadEmojiOne(dataFile string) (map[string]EmojiOne, error) {
+func loadEmojiOne(dataFile string) (*TrieNode, error) {
+	var trie = NewTrie()
 	var c = map[string]EmojiOne{}
-	if data, err := ioutil.ReadFile(dataFile); err == nil {
-		json.Unmarshal(data, &c)
+	var data, err = ioutil.ReadFile(dataFile)
+	if err != nil {
+		return nil, err
 	}
-	return c, nil
-}
-
-type EmojiEngine struct {
-	nameTable      map[string]string
-	shortNameTable map[string]string
-	asciiTable     map[string]string
-	emojiTrie      *bamboo.Node
-	keys           []rune
-}
-
-func NewEmojiEngine() *EmojiEngine {
-	var be = &EmojiEngine{
-		shortNameTable: map[string]string{},
-		asciiTable:     map[string]string{},
-		emojiTrie:      &bamboo.Node{},
-	}
-	var data = emojiMap
-	for k, v := range data {
+	json.Unmarshal(data, &c)
+	for k, v := range c {
 		var codePointStr string
 		for _, codePoint := range strings.Split(k, "-") {
 			if code, err := strconv.ParseInt(codePoint, 16, 32); err == nil {
 				codePointStr += string(rune(code))
 			}
 		}
-		var shortName = v.Shortname[1 : len([]rune(v.Shortname))-1]
-		be.shortNameTable[shortName] = codePointStr
-		for _, ascii := range v.Ascii {
-			be.asciiTable[ascii] = codePointStr
-			bamboo.AddTrie(be.emojiTrie, []rune(ascii), false, false)
+		for _, ascii := range v.ASCII {
+			InsertTrie(trie, ascii, codePointStr)
 		}
-		bamboo.AddTrie(be.emojiTrie, []rune(shortName), false, false)
+		for _, keyword := range v.Keywords {
+			InsertTrie(trie, keyword, codePointStr)
+		}
 	}
+	return trie, nil
+}
+
+type EmojiEngine struct {
+	keys []rune
+}
+
+func NewEmojiEngine() *EmojiEngine {
+	var be = &EmojiEngine{}
 	return be
 }
 
-func (be *EmojiEngine) TestString(s string) uint8 {
-	return bamboo.TestString(be.emojiTrie, []rune(s), false)
+func (be *EmojiEngine) MatchString(s string) bool {
+	var lookup = FindPrefix(emojiTrie, s)
+	return lookup != nil
 }
 
 func (be *EmojiEngine) Filter(s string) []string {
 	var codePoints []string
-	var names = byString(bamboo.FindWords(be.emojiTrie, s))
+	var keys []string
+	var lookup = FindPrefix(emojiTrie, s)
+	for key := range lookup {
+		keys = append(keys, key)
+	}
+	var names = byString(keys)
 	sort.Sort(names)
 	for _, name := range names {
-		if be.asciiTable[name] != "" {
-			codePoints = append(codePoints, be.asciiTable[name])
-		} else if be.shortNameTable[name] != "" {
-			codePoints = append(codePoints, be.shortNameTable[name])
+		var cps = byString(strings.Split(lookup[name], ":"))
+		sort.Sort(cps)
+		for _, cp := range cps {
+			codePoints = append(codePoints, cp)
 		}
 	}
 	return codePoints

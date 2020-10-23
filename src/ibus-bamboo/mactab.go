@@ -1,3 +1,22 @@
+/*
+ * Bamboo - A Vietnamese Input method editor
+ * Copyright (C) 2018 Luong Thanh Lam <ltlam93@gmail.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 package main
 
 import (
@@ -25,10 +44,10 @@ func NewMacroTable() *MacroTable {
 //---------------------------------------------------------------
 func (e *MacroTable) LoadFromFile(macroFileName string) error {
 	f, err := os.Open(macroFileName)
-	defer f.Close()
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 	e.mTable = map[string]string{}
 	rd := bufio.NewReader(f)
 	for {
@@ -63,7 +82,7 @@ func (e *MacroTable) IncludeKey(key string) bool {
 	if e.mTable[key] != "" {
 		return true
 	}
-	for k, _ := range e.mTable {
+	for k := range e.mTable {
 		if strings.Contains(k, key) {
 			return true
 		}
@@ -73,8 +92,6 @@ func (e *MacroTable) IncludeKey(key string) bool {
 
 //---------------------------------------------------------------
 func (e *MacroTable) Enable(engineName string) {
-	e.Lock()
-	defer e.Unlock()
 	e.enable = true
 
 	go func() {
@@ -100,15 +117,13 @@ func (e *MacroTable) Enable(engineName string) {
 
 //---------------------------------------------------------------
 func (e *MacroTable) Disable() {
-	e.Lock()
-	defer e.Unlock()
 	e.enable = false
 	e.mTable = map[string]string{}
 }
 
 //---------------------------------------------------------------
 func getMactabFile(engineName string) string {
-	return fmt.Sprintf(mactabFile, getConfigDir(), engineName)
+	return fmt.Sprintf(mactabFile, getConfigDir(engineName), engineName)
 }
 
 //---------------------------------------------------------------

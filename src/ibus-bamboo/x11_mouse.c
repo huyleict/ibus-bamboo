@@ -1,6 +1,7 @@
 /*
  * Bamboo - A Vietnamese Input method editor
- * Copyright (C) 2018 Luong Thanh Lam <ltlam93@gmail.com>
+ * Copyright (C) 2012 Le Quoc Tuan <mr.lequoctuan@gmail.com>
+ * Copyright (C) 2018-2020 Luong Thanh Lam <ltlam93@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,7 +27,7 @@
 #include <unistd.h>
 #include <time.h>
 #include "_cgo_export.h"
-#define CAPTURE_MOUSE_MOVE_DELTA        100
+#define CAPTURE_MOUSE_MOVE_DELTA        50
 
 static pthread_t th_mcap;
 static pthread_mutex_t mutex_mcap;
@@ -94,7 +95,6 @@ static int grabPointer(Display *dpy, Window w, unsigned int mask) {
 
 static void* thread_mouse_capture(void* data)
 {
-    pthread_mutex_lock(&mutex_mcap);
     XEvent event;
     int x_old, y_old, x_root_old, y_root_old, rt;
     unsigned int mask;
@@ -117,10 +117,10 @@ static void* thread_mouse_capture(void* data)
         }
         XUngrabPointer(dpy, CurrentTime);
         XSync(dpy, 1);
-        pthread_mutex_lock(&mutex_mcap); // set mutex to lock status, so this thread will wait until next unlock (by update preedit string)
+        pthread_mutex_trylock(&mutex_mcap); // set mutex to lock status, so this thread will wait until next unlock (by update preedit string)
+
         if (mcap_running == 0)
             break;
-
         if (event.type == MotionNotify) // mouse move
         {
             if ((abs(event.xmotion.x_root - x_root_old) >= CAPTURE_MOUSE_MOVE_DELTA) ||
@@ -128,7 +128,6 @@ static void* thread_mouse_capture(void* data)
             {
                 fprintf(stderr, "MotionNotify: delta_x=%d delta_y=%d\n", abs(event.xmotion.x_root - x_root_old), abs(event.xmotion.y_root - y_root_old));
                 mouse_move_handler();
-
                 x_root_old = event.xmotion.x_root;
                 y_root_old = event.xmotion.y_root;
             }
@@ -137,8 +136,10 @@ static void* thread_mouse_capture(void* data)
             }
         }
         else {
-              mouse_click_handler();
+            fprintf(stderr, "MotionNotify: click\n");
+            mouse_click_handler();
         }
+        pthread_mutex_lock(&mutex_mcap);
     }
     mcap_running = 0;
     XCloseDisplay(dpy);
@@ -174,6 +175,15 @@ void mouse_capture_unlock()
 {
     if (mcap_running==0) {
         return;
+    }
+    // unlock capture thread (start capture)
+    pthread_mutex_unlock(&mutex_mcap);
+}
+
+void mouse_capture_start_or_unlock()
+{
+    if (mcap_running==0) {
+        mouse_capture_init();
     }
     // unlock capture thread (start capture)
     pthread_mutex_unlock(&mutex_mcap);

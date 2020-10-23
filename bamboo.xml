@@ -22,24 +22,23 @@
     <name>org.freedesktop.IBus.bamboo</name>
     <description>Vietnamese input engine for IBus</description>
     <exec>/usr/lib/ibus-engine-bamboo --ibus</exec>
-    <version>0.5.4</version>
-	<author>Luong Thanh Lam &lt;ltlam93@gmail.com&gt;</author>
+    <version>0.6.7</version>
+    <author>Luong Thanh Lam &lt;ltlam93@gmail.com&gt;</author>
     <license>GPLv3</license>
     <homepage>https://github.com/BambooEngine/ibus-bamboo/</homepage>
     <textdomain>ibus-bamboo</textdomain>
-	<engines>
-        <engine>
-            <symbol>vi</symbol>
-            <name>Bamboo</name>
-            <language>vi</language>
-            <license>GPLv3</license>
-            <author>Luong Thanh Lam &lt;ltlam93@gmail.com&gt;</author>
-            <icon>/usr/share/ibus-bamboo/viet-on.png</icon>
-            <layout>default</layout>
-            <longname>Bamboo</longname>
-            <description>Vietnamese input engine for IBus</description>
-            <rank>0</rank>
-            <setup></setup>
-        </engine>
-	</engines>
+    <engines>
+          <engine>
+              <symbol>vi</symbol>
+              <name>Bamboo</name>
+              <language>vi</language>
+              <license>GPLv3</license>
+              <author>Luong Thanh Lam &lt;ltlam93@gmail.com&gt;</author>
+              <icon>/usr/share/ibus-bamboo/viet-on.png</icon>
+              <layout>default</layout>
+              <longname>Bamboo</longname>
+              <description>Vietnamese input method editor</description>
+              <rank>1</rank>
+          </engine>
+    </engines>
 </component>
