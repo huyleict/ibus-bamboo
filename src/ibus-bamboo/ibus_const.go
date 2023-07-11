@@ -40,7 +40,8 @@ const (
 
 	IBusReleaseMask = 1 << 30
 
-	IBusModifierMask = 0x5f001fff
+	IBusModifierMask   = 0x5f001fff
+	IBusDefaultModMask = IBusControlMask | IBusShiftMask | IBusMod1Mask | IBusSuperMask | IBusHyperMask | IBusMetaMask
 )
 
 const (
@@ -76,6 +77,7 @@ const (
 	IBusGrave           = 0x0060
 	IBusInsert          = 0xff63
 	IBusCapsLock        = 0xffe5
+	IBusHyperR          = 0xffee
 	IBusOpenLookupTable = IBusTilde
 	IBusOpenEmojiTable  = IBusColon
 )

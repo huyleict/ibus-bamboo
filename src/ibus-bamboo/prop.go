@@ -28,24 +28,25 @@ import (
 )
 
 const (
-	PropKeyAbout                = "about"
-	PropKeyStdToneStyle         = "std_tone_style"
-	PropKeyFreeToneMarking      = "tone_free_marking"
-	PropKeyEnableSpellCheck     = "enable_spell_check"
-	PropKeySpellCheckByRules    = "spell_check_by_rules"
-	PropKeySpellCheckByDicts    = "spell_check_by_dicts"
-	PropKeyPreeditInvisibility  = "preedit_invisibility"
-	PropKeyVnCharsetConvert     = "charset_convert_page"
-	PropKeyMouseCapturing       = "mouse_capturing"
-	PropKeyMacroEnabled         = "macro_enabled"
-	PropKeyMacroTable           = "open_macro_table"
-	PropKeyEmojiEnabled         = "emoji_enabled"
-	PropKeyConfiguration        = "configuration"
-	PropKeyPreeditElimination   = "preedit_elimination"
-	PropKeyInputModeLookupTable = "input_mode_lookup_table"
-	PropKeyAutoCapitalizeMacro  = "auto_capitalize_macro"
-	PropKeyIMQuickSwitchEnabled = "im_quick_switch"
-	PropKeyRestoreKeyStrokes    = "restore_key_strokes"
+	PropKeyAbout                        = "about"
+	PropKeyStdToneStyle                 = "std_tone_style"
+	PropKeyFreeToneMarking              = "tone_free_marking"
+	PropKeyEnableSpellCheck             = "enable_spell_check"
+	PropKeySpellCheckByRules            = "spell_check_by_rules"
+	PropKeySpellCheckByDicts            = "spell_check_by_dicts"
+	PropKeyPreeditInvisibility          = "preedit_invisibility"
+	PropKeyVnCharsetConvert             = "charset_convert_page"
+	PropKeyMouseCapturing               = "mouse_capturing"
+	PropKeyMacroEnabled                 = "macro_enabled"
+	PropKeyMacroTable                   = "open_macro_table"
+	PropKeyEmojiEnabled                 = "emoji_enabled"
+	PropKeyConfiguration                = "configuration"
+	PropKeyPreeditElimination           = "preedit_elimination"
+	PropKeyInputModeLookupTable         = "input_mode_lookup_table"
+	PropKeyInputModeLookupTableShortcut = "input_mode_lookup_table_shortcut"
+	PropKeyAutoCapitalizeMacro          = "auto_capitalize_macro"
+	PropKeyIMQuickSwitchEnabled         = "im_quick_switch"
+	PropKeyRestoreKeyStrokes            = "restore_key_strokes"
 )
 
 var IBusSeparator = &ibus.Property{
@@ -64,6 +65,34 @@ func GetPropListByConfig(c *Config) *ibus.PropList {
 	var aboutText = "IBus " + EngineName + " " + Version
 	if !*embedded {
 		aboutText += " (Debug)"
+	}
+	if c.DefaultInputMode == usIM {
+		return ibus.NewPropList(
+			&ibus.Property{
+				Name:      "IBusProperty",
+				Key:       PropKeyAbout,
+				Type:      ibus.PROP_TYPE_NORMAL,
+				Label:     dbus.MakeVariant(ibus.NewText(aboutText)),
+				Tooltip:   dbus.MakeVariant(ibus.NewText("Mở trang chủ")),
+				Sensitive: true,
+				Visible:   true,
+				Icon:      "gtk-home",
+				Symbol:    dbus.MakeVariant(ibus.NewText("")),
+				SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
+			},
+			&ibus.Property{
+				Name:      "IBusProperty",
+				Key:       PropKeyInputModeLookupTableShortcut,
+				Type:      ibus.PROP_TYPE_NORMAL,
+				Label:     dbus.MakeVariant(ibus.NewText("Keyboard Shortcuts")),
+				Tooltip:   dbus.MakeVariant(ibus.NewText("Keyboard Shortcuts")),
+				Sensitive: true,
+				Visible:   true,
+				Icon:      "appointment",
+				Symbol:    dbus.MakeVariant(ibus.NewText("")),
+				SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
+			},
+		)
 	}
 	return ibus.NewPropList(
 		&ibus.Property{
@@ -131,18 +160,6 @@ func GetPropListByConfig(c *Config) *ibus.PropList {
 			Name:      "IBusProperty",
 			Key:       "-",
 			Type:      ibus.PROP_TYPE_MENU,
-			Label:     dbus.MakeVariant(ibus.NewText("Phím tắt")),
-			Tooltip:   dbus.MakeVariant(ibus.NewText("Shortcut Keys")),
-			Sensitive: true,
-			Visible:   true,
-			Icon:      "appointment",
-			Symbol:    dbus.MakeVariant(ibus.NewText("")),
-			SubProps:  dbus.MakeVariant(GetHotKeyPropListByConfig(c)),
-		},
-		&ibus.Property{
-			Name:      "IBusProperty",
-			Key:       "-",
-			Type:      ibus.PROP_TYPE_MENU,
 			Label:     dbus.MakeVariant(ibus.NewText("Chế độ gõ mặc định")),
 			Tooltip:   dbus.MakeVariant(ibus.NewText("Chế độ gõ mặc định")),
 			Sensitive: true,
@@ -162,6 +179,18 @@ func GetPropListByConfig(c *Config) *ibus.PropList {
 			Icon:      "preferences-other",
 			Symbol:    dbus.MakeVariant(ibus.NewText("")),
 			SubProps:  dbus.MakeVariant(GetOptionsPropListByConfig(c)),
+		},
+		&ibus.Property{
+			Name:      "IBusProperty",
+			Key:       PropKeyInputModeLookupTableShortcut,
+			Type:      ibus.PROP_TYPE_NORMAL,
+			Label:     dbus.MakeVariant(ibus.NewText("Phím tắt")),
+			Tooltip:   dbus.MakeVariant(ibus.NewText("Keyboard Shortcuts")),
+			Sensitive: true,
+			Visible:   true,
+			Icon:      "appointment",
+			Symbol:    dbus.MakeVariant(ibus.NewText("")),
+			SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
 		},
 	)
 }
@@ -363,7 +392,7 @@ func GetOptionsPropListByConfig(c *Config) *ibus.PropList {
 	if c.Flags&bamboo.EfreeToneMarking != 0 {
 		toneFreeMarkingChecked = ibus.PROP_STATE_CHECKED
 	}
-	if c.IBflags&IBpreeditInvisibility != 0 {
+	if c.IBflags&IBnoUnderline != 0 {
 		preeditInvisibilityChecked = ibus.PROP_STATE_CHECKED
 	}
 	if c.IBflags&IBpreeditElimination != 0 {
@@ -411,7 +440,7 @@ func GetOptionsPropListByConfig(c *Config) *ibus.PropList {
 			Name:      "IBusProperty",
 			Key:       PropKeyMouseCapturing,
 			Type:      ibus.PROP_TYPE_TOGGLE,
-			Label:     dbus.MakeVariant(ibus.NewText("Capture mouse events")),
+			Label:     dbus.MakeVariant(ibus.NewText("Bắt sự kiện chuột")),
 			Tooltip:   dbus.MakeVariant(ibus.NewText("Mouse capturing")),
 			Sensitive: true,
 			Visible:   true,
@@ -429,76 +458,6 @@ func GetOptionsPropListByConfig(c *Config) *ibus.PropList {
 			Visible:   false,
 			State:     x11FakeBackspaceChecked,
 			Symbol:    dbus.MakeVariant(ibus.NewText("X")),
-			SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
-		},
-	)
-}
-
-func GetHotKeyPropListByConfig(c *Config) *ibus.PropList {
-	imQuickSwitchChecked := ibus.PROP_STATE_UNCHECKED
-	if c.IBflags&IBimQuickSwitchEnabled != 0 {
-		imQuickSwitchChecked = ibus.PROP_STATE_CHECKED
-	}
-	inputLookupTableChecked := ibus.PROP_STATE_UNCHECKED
-	if c.IBflags&IBinputModeLookupTableEnabled != 0 {
-		inputLookupTableChecked = ibus.PROP_STATE_CHECKED
-	}
-	restoreKeyStrokesChecked := ibus.PROP_STATE_UNCHECKED
-	if c.IBflags&IBrestoreKeyStrokesEnabled != 0 {
-		restoreKeyStrokesChecked = ibus.PROP_STATE_CHECKED
-	}
-	emojiChecked := ibus.PROP_STATE_CHECKED
-	if c.IBflags&IBemojiDisabled != 0 {
-		emojiChecked = ibus.PROP_STATE_UNCHECKED
-	}
-
-	return ibus.NewPropList(
-		&ibus.Property{
-			Name:      "IBusProperty",
-			Key:       PropKeyEmojiEnabled,
-			Type:      ibus.PROP_TYPE_TOGGLE,
-			Label:     dbus.MakeVariant(ibus.NewText("Emoji  [Shift + :]")),
-			Tooltip:   dbus.MakeVariant(ibus.NewText("Emoji")),
-			Sensitive: true,
-			Visible:   true,
-			State:     emojiChecked,
-			Symbol:    dbus.MakeVariant(ibus.NewText(":)")),
-			SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
-		},
-		&ibus.Property{
-			Name:      "IBusProperty",
-			Key:       PropKeyIMQuickSwitchEnabled,
-			Type:      ibus.PROP_TYPE_TOGGLE,
-			Label:     dbus.MakeVariant(ibus.NewText("Tạm tắt bộ gõ  [Shift]")),
-			Tooltip:   dbus.MakeVariant(ibus.NewText("IM quick switch")),
-			Sensitive: true,
-			Visible:   true,
-			State:     imQuickSwitchChecked,
-			Symbol:    dbus.MakeVariant(ibus.NewText("")),
-			SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
-		},
-		&ibus.Property{
-			Name:      "IBusProperty",
-			Key:       PropKeyInputModeLookupTable,
-			Type:      ibus.PROP_TYPE_TOGGLE,
-			Label:     dbus.MakeVariant(ibus.NewText("Chuyển chế độ gõ  [Shift + ~]")),
-			Tooltip:   dbus.MakeVariant(ibus.NewText("Open Input Mode LookupTable")),
-			Sensitive: true,
-			Visible:   true,
-			State:     inputLookupTableChecked,
-			Symbol:    dbus.MakeVariant(ibus.NewText("")),
-			SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
-		},
-		&ibus.Property{
-			Name:      "IBusProperty",
-			Key:       PropKeyRestoreKeyStrokes,
-			Type:      ibus.PROP_TYPE_TOGGLE,
-			Label:     dbus.MakeVariant(ibus.NewText("Khôi phục phím  [Shift + Space]")),
-			Tooltip:   dbus.MakeVariant(ibus.NewText("Restore key strokes")),
-			Sensitive: true,
-			Visible:   true,
-			State:     restoreKeyStrokesChecked,
-			Symbol:    dbus.MakeVariant(ibus.NewText("")),
 			SubProps:  dbus.MakeVariant(*ibus.NewPropList()),
 		},
 	)

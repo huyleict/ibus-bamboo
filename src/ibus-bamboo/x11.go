@@ -40,10 +40,18 @@ extern void x11SendShiftR();
 extern void x11SendShiftLeft(int n, int r, int timeout);
 extern void setXIgnoreErrorHandler();
 extern char* x11GetFocusWindowClass();
+extern void x11StartWindowInspector();
+extern void x11StopWindowInspector();
 */
 import "C"
 import (
+	"sync"
 	"unsafe"
+)
+
+var (
+	mcapRunning bool
+	mcapMutex   sync.RWMutex
 )
 
 func init() {
@@ -63,6 +71,14 @@ func mouse_click_handler() {
 var onMouseMove func()
 var onMouseClick func()
 
+func x11StartWindowInspector() {
+	C.x11StartWindowInspector()
+}
+
+func x11StopWindowInspector() {
+	C.x11StopWindowInspector()
+}
+
 func startMouseRecording() {
 	C.mouse_recording_init()
 }
@@ -72,19 +88,37 @@ func stopMouseRecording() {
 }
 
 func startMouseCapturing() {
-	C.mouse_capture_init()
+	mcapMutex.Lock()
+	defer mcapMutex.Unlock()
+	if !mcapRunning {
+		C.mouse_capture_init()
+		mcapRunning = true
+	}
 }
 
 func stopMouseCapturing() {
-	C.mouse_capture_exit()
+	mcapMutex.RLock()
+	defer mcapMutex.RUnlock()
+	if mcapRunning {
+		C.mouse_capture_exit()
+	}
 }
 
 func mouseCaptureStartOrUnlock() {
-	C.mouse_capture_start_or_unlock()
+	mcapMutex.Lock()
+	defer mcapMutex.Unlock()
+	if !mcapRunning {
+		C.mouse_capture_start_or_unlock()
+		mcapRunning = true
+	}
 }
 
 func mouseCaptureUnlock() {
-	C.mouse_capture_unlock()
+	mcapMutex.RLock()
+	defer mcapMutex.RUnlock()
+	if mcapRunning {
+		C.mouse_capture_unlock()
+	}
 }
 
 func x11Copy(str string) {
@@ -128,7 +162,6 @@ func x11SendBackspace(n int, timeout int) {
 func x11GetFocusWindowClass() string {
 	var wmClass = C.x11GetFocusWindowClass()
 	if wmClass != nil {
-		defer C.free(unsafe.Pointer(wmClass))
 		return C.GoString(wmClass)
 	}
 	return ""

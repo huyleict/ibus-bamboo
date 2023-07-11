@@ -21,6 +21,10 @@ var PunctuationMarks = []rune{
 	'|',
 }
 
+func IsSpace(key rune) bool {
+	return key == ' '
+}
+
 func IsPunctuationMark(key rune) bool {
 	for _, c := range PunctuationMarks {
 		if c == key {
@@ -169,6 +173,15 @@ func IsVietnameseRune(lowerKey rune) bool {
 func HasAnyVietnameseRune(word string) bool {
 	for _, chr := range word {
 		if IsVietnameseRune(unicode.ToLower(chr)) {
+			return true
+		}
+	}
+	return false
+}
+
+func HasAnyVietnameseVower(word string) bool {
+	for _, chr := range word {
+		if IsVowel(unicode.ToLower(chr)) {
 			return true
 		}
 	}

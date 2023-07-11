@@ -41,26 +41,15 @@ IBus Bamboo - Bộ gõ tiếng Việt cho Linux
 ```sh
 sudo add-apt-repository ppa:bamboo-engine/ibus-bamboo
 sudo apt-get update
-sudo apt-get install ibus-bamboo
+sudo apt-get install ibus ibus-bamboo --install-recommends
 ibus restart
 # Đặt ibus-bamboo làm bộ gõ mặc định
-gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'us'), ('ibus', 'Bamboo')]"
+env DCONF_PROFILE=ibus dconf write /desktop/ibus/general/preload-engines "['BambooUs', 'Bamboo']" && gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'us'), ('ibus', 'Bamboo')]"
 ```
 
 ### Arch Linux và các distro tương tự
-Với Arch Linux, bạn có thể build từ AUR bằng yay:
-```sh
-yay -S ibus-bamboo
 ```
-Hoặc bằng pamac:
-```sh
-pamac build ibus-bamboo
-```
-Hoặc build build từ file PKGBUILD:
-```sh
-git clone https://aur.archlinux.org/ibus-bamboo.git
-cd ibus-bamboo
-makepkg -si
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BambooEngine/ibus-bamboo/master/archlinux/install.sh)"
 ```
 
 ### Void Linux
@@ -90,6 +79,4 @@ Trước khi báo lỗi vui lòng đọc [những vấn đề thường gặp](h
 Nếu trang phía trên không giải quyết vấn đề của bạn, vui lòng [báo lỗi tại đây](https://github.com/BambooEngine/ibus-bamboo/issues)
 
 ## Giấy phép
-ibus-bamboo là phần mềm tự do nguồn mở. Toàn bộ mã nguồn của ibus-bamboo được phát hành dưới các quy định ghi trong Giấy phép Công cộng GNU (GNU General Public License v3.0).
-
-*Từ phiên bản v0.5.3, ibus-bamboo được viết lại và phát triển độc lập với ibus-teni.*
+ibus-bamboo là phần mềm tự do nguồn mở, được phát hành dưới các quy định ghi trong Giấy phép Công cộng GNU (GNU General Public License v3.0).

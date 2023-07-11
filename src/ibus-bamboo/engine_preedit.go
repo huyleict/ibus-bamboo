@@ -36,17 +36,21 @@ func (e *IBusBambooEngine) preeditProcessKeyEvent(keyVal uint32, keyCode uint32,
 	defer e.updateLastKeyWithShift(keyVal, state)
 
 	// workaround for chrome's address bar and Google SpreadSheets
-	if !e.isValidState(state) || !e.canProcessKey(keyVal) ||
-		(rawKeyLen == 0 && !e.preeditor.CanProcessKey(keyRune)) {
-		if rawKeyLen > 0 {
-			e.HidePreeditText()
-			e.commitText(e.getPreeditString())
-			e.preeditor.Reset()
+	if !e.shouldRestoreKeyStrokes {
+		if !e.isValidState(state) || !e.canProcessKey(keyVal) ||
+			(e.config.IBflags&IBmacroEnabled == 0 && rawKeyLen == 0 && !e.preeditor.CanProcessKey(keyRune)) {
+			if rawKeyLen > 0 {
+				e.commitPreeditAndReset(e.getPreeditString())
+			}
+			return false, nil
 		}
-		return false, nil
 	}
 
 	if keyVal == IBusBackSpace {
+		if e.runeCount() == 1 {
+			e.commitPreeditAndReset("")
+			return true, nil
+		}
 		if rawKeyLen > 0 {
 			e.preeditor.RemoveLastChar(true)
 			e.updatePreedit(e.getPreeditString())
@@ -57,52 +61,21 @@ func (e *IBusBambooEngine) preeditProcessKeyEvent(keyVal uint32, keyCode uint32,
 	}
 	if keyVal == IBusTab {
 		if ok, macText := e.getMacroText(); ok {
-			e.commitPreedit(macText)
+			e.commitPreeditAndReset(macText)
 		} else {
-			e.commitPreedit(e.getComposedString(oldText))
+			e.commitPreeditAndReset(e.getComposedString(oldText))
 			return false, nil
 		}
 		return true, nil
 	}
 
-	if e.preeditor.CanProcessKey(keyRune) {
-		if state&IBusLockMask != 0 {
-			keyRune = e.toUpper(keyRune)
-		}
-		e.preeditor.ProcessKey(keyRune, e.getBambooInputMode())
-		if inKeyList(e.preeditor.GetInputMethod().AppendingKeys, keyRune) {
-			if fullSeq := e.preeditor.GetProcessedString(bamboo.VietnameseMode); len(fullSeq) > 0 && rune(fullSeq[len(fullSeq)-1]) == keyRune {
-				e.commitPreedit(fullSeq)
-			} else if newText := e.getPreeditString(); newText != "" && keyRune == rune(newText[len(newText)-1]) {
-				e.commitPreedit(oldText + string(keyRune))
-			} else {
-				e.updatePreedit(e.getPreeditString())
-			}
-		} else {
-			e.updatePreedit(e.getPreeditString())
-		}
-		return true, nil
-	} else if bamboo.IsWordBreakSymbol(keyRune) {
-		if keyVal == IBusSpace && state&IBusShiftMask != 0 &&
-			e.config.IBflags&IBrestoreKeyStrokesEnabled != 0 && !e.lastKeyWithShift {
-			// restore key strokes
-			var vnSeq = e.preeditor.GetProcessedString(bamboo.VietnameseMode)
-			if bamboo.HasAnyVietnameseRune(vnSeq) {
-				e.commitPreedit(e.preeditor.GetProcessedString(bamboo.EnglishMode))
-			} else {
-				e.commitPreedit(vnSeq + string(keyRune))
-			}
-			return true, nil
-		}
-		if ok, macText := e.getMacroText(); ok {
-			e.commitPreedit(macText + string(keyRune))
-			return true, nil
-		}
-		e.commitPreedit(e.getComposedString(oldText) + string(keyRune))
+	newText, isWordBreakRune := e.getCommitText(keyVal, keyCode, state)
+	if isWordBreakRune {
+		e.commitPreeditAndReset(newText)
 		return true, nil
 	}
-	e.commitPreedit(e.getPreeditString())
-	return false, nil
+	e.updatePreedit(newText)
+	return true, nil
 }
 
 func (e *IBusBambooEngine) expandMacro(str string) string {
@@ -119,25 +92,31 @@ func (e *IBusBambooEngine) expandMacro(str string) string {
 }
 
 func (e *IBusBambooEngine) updatePreedit(processedStr string) {
+	defer func() {
+		if e.config.IBflags&IBmouseCapturing != 0 {
+			mouseCaptureUnlock()
+		}
+	}()
 	var encodedStr = e.encodeText(processedStr)
 	var preeditLen = uint32(len([]rune(encodedStr)))
 	if preeditLen == 0 {
 		e.HidePreeditText()
+		e.HideAuxiliaryText()
 		e.CommitText(ibus.NewText(""))
 		return
 	}
 	var ibusText = ibus.NewText(encodedStr)
+	if inStringList(enabledAuxiliaryTextList, e.getWmClass()) {
+		e.UpdateAuxiliaryText(ibusText, true)
+		return
+	}
 
-	if e.config.IBflags&IBpreeditInvisibility != 0 {
+	if e.config.IBflags&IBnoUnderline != 0 {
 		ibusText.AppendAttr(ibus.IBUS_ATTR_TYPE_NONE, ibus.IBUS_ATTR_UNDERLINE_SINGLE, 0, preeditLen)
 	} else {
 		ibusText.AppendAttr(ibus.IBUS_ATTR_TYPE_UNDERLINE, ibus.IBUS_ATTR_UNDERLINE_SINGLE, 0, preeditLen)
 	}
 	e.UpdatePreeditTextWithMode(ibusText, preeditLen, true, ibus.IBUS_ENGINE_PREEDIT_COMMIT)
-
-	if e.config.IBflags&IBmouseCapturing != 0 {
-		mouseCaptureUnlock()
-	}
 }
 
 func (e *IBusBambooEngine) getBambooInputMode() bamboo.Mode {
@@ -160,7 +139,8 @@ func (e *IBusBambooEngine) shouldFallbackToEnglish(checkVnRune bool) bool {
 		return false
 	}
 	// we want to allow dd even in non-vn sequence, because dd is used a lot in abbreviation
-	if e.config.IBflags&IBddFreeStyle != 0 && (vnRunes[len(vnRunes)-1] == 'd' || strings.ContainsRune(vnSeq, 'đ')) {
+	if e.config.IBflags&IBddFreeStyle != 0 && !bamboo.HasAnyVietnameseVower(vnSeq) &&
+		(vnRunes[len(vnRunes)-1] == 'd' || strings.ContainsRune(vnSeq, 'đ')) {
 		return false
 	}
 	if checkVnRune && !bamboo.HasAnyVietnameseRune(vnSeq) {
@@ -204,6 +184,9 @@ func (e *IBusBambooEngine) getProcessedString(mode bamboo.Mode) string {
 }
 
 func (e *IBusBambooEngine) getPreeditString() string {
+	if e.config.IBflags&IBmacroEnabled != 0 {
+		return e.getProcessedString(bamboo.PunctuationMode)
+	}
 	if e.shouldFallbackToEnglish(true) {
 		return e.getProcessedString(bamboo.EnglishMode)
 	}
@@ -212,12 +195,15 @@ func (e *IBusBambooEngine) getPreeditString() string {
 
 func (e *IBusBambooEngine) resetPreedit() {
 	e.HidePreeditText()
+	e.HideAuxiliaryText()
 	e.preeditor.Reset()
 }
 
-func (e *IBusBambooEngine) commitPreedit(s string) {
+func (e *IBusBambooEngine) commitPreeditAndReset(s string) {
 	e.commitText(s)
 	e.HidePreeditText()
+	e.HideAuxiliaryText()
+	e.HideLookupTable()
 	e.preeditor.Reset()
 }
 

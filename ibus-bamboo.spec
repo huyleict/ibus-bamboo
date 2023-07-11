@@ -1,19 +1,21 @@
 %define engine_name bamboo
 %define ibus_dir     /usr/share/ibus
-%define engine_dir   /usr/share/ibus-%{engine_name}
+%define engine_share_dir   /usr/share/ibus-%{engine_name}
+%define engine_lib_dir   /usr/lib/ibus-%{engine_name}
 %define ibus_comp_dir /usr/share/ibus/component
+%define _unpackaged_files_terminate_build 0
 
 Name: ibus-bamboo
-Version: 0.6.7
+Version: 0.8.2
 Release: 1%{?dist}
 Summary: A Vietnamese input method for IBus
 
-License: GPLv3+
+License: GPL-3.0+
 URL: https://github.com/BambooEngine/ibus-bamboo
 Source0: %{name}-%{version}.tar.gz
 
-BuildRequires: go, libX11-devel, libXtst-devel
-Requires: ibus, libX11, libXtst
+BuildRequires: go, libX11-devel, libXtst-devel, gtk3-devel
+Requires: ibus, gtk3
 
 %description
 A Vietnamese IME for IBus using Bamboo Engine.
@@ -35,10 +37,11 @@ make DESTDIR=%{buildroot} install
 %license LICENSE
 %dir %{ibus_dir}
 %dir %{ibus_comp_dir}
-%dir %{engine_dir}
-%{engine_dir}/*
+%dir %{engine_share_dir}
+%dir %{engine_lib_dir}
+%{engine_share_dir}/*
+%{engine_lib_dir}/*
 %{ibus_comp_dir}/%{engine_name}.xml
-/usr/lib/ibus-engine-%{engine_name}
 
 %clean
 cd ..

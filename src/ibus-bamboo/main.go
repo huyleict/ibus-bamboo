@@ -36,6 +36,7 @@ const (
 
 var embedded = flag.Bool("ibus", false, "Run the embedded ibus component")
 var version = flag.Bool("version", false, "Show version")
+var gui = flag.Bool("gui", false, "Show GUI")
 var isWayland = false
 var isGnome = false
 
@@ -53,6 +54,9 @@ func main() {
 	flag.Parse()
 	if *embedded {
 		os.Chdir(DataDir)
+	}
+	if isWayland && !isGnome {
+		go wlGetFocusWindowClass()
 	}
 	if *version {
 		fmt.Println(Version)

@@ -35,80 +35,57 @@ import (
 type IBusBambooEngine struct {
 	sync.Mutex
 	ibus.Engine
-	preeditor              bamboo.IEngine
-	engineName             string
-	config                 *Config
-	propList               *ibus.PropList
-	englishMode            bool
-	macroTable             *MacroTable
-	wmClasses              string
-	isInputModeLTOpened    bool
-	isEmojiLTOpened        bool
-	emojiLookupTable       *ibus.LookupTable
-	inputModeLookupTable   *ibus.LookupTable
-	capabilities           uint32
-	keyPressDelay          int
-	nFakeBackSpace         int
-	isFirstTimeSendingBS   bool
-	emoji                  *EmojiEngine
-	isSurroundingTextReady bool
-	lastKeyWithShift       bool
-	lastCommitText         int64
+	preeditor               bamboo.IEngine
+	engineName              string
+	config                  *Config
+	propList                *ibus.PropList
+	englishMode             bool
+	macroTable              *MacroTable
+	wmClasses               string
+	isInputModeLTOpened     bool
+	isEmojiLTOpened         bool
+	isInHexadecimal         bool
+	emojiLookupTable        *ibus.LookupTable
+	inputModeLookupTable    *ibus.LookupTable
+	capabilities            uint32
+	keyPressDelay           int
+	nFakeBackSpace          int
+	isFirstTimeSendingBS    bool
+	emoji                   *EmojiEngine
+	isSurroundingTextReady  bool
+	lastKeyWithShift        bool
+	lastCommitText          int64
+	shouldRestoreKeyStrokes bool
 }
 
-/**
+/*
+*
 Implement IBus.Engine's process_key_event default signal handler.
 
 Args:
+
 	keyval - The keycode, transformed through a keymap, stays the
 		same for every keyboard
 	keycode - Keyboard-dependant key code
 	modifiers - The state of IBus.ModifierType keys like
 		Shift, Control, etc.
+
 Return:
+
 	True - if successfully process the keyevent
 	False - otherwise. The keyevent will be passed to X-Client
 
 This function gets called whenever a key is pressed.
 */
 func (e *IBusBambooEngine) ProcessKeyEvent(keyVal uint32, keyCode uint32, state uint32) (bool, *dbus.Error) {
-	if e.checkInputMode(usIM) {
-		if e.isInputModeLTOpened || keyVal == IBusOpenLookupTable {
-			// return false, nil
-		} else {
-			return false, nil
-		}
-	}
-	if e.processShiftKey(keyVal, state) {
-		return true, nil
-	}
-	if e.isIgnoredKey(keyVal, state) {
+	if state&IBusReleaseMask != 0 {
+		// fmt.Println("Ignore key-up event")
 		return false, nil
 	}
-	log.Printf(">ProcessKeyEvent >  %c | keyCode 0x%04x keyVal 0x%04x | %d\n", rune(keyVal), keyCode, keyVal, len(keyPressChan))
-	if e.config.IBflags&IBinputModeLookupTableEnabled != 0 && keyVal == IBusOpenLookupTable && !e.isInputModeLTOpened && e.wmClasses != "" {
-		e.resetBuffer()
-		e.isInputModeLTOpened = true
-		e.lastKeyWithShift = true
-		e.openLookupTable()
-		return true, nil
-	}
-	if e.config.IBflags&IBemojiDisabled == 0 && keyVal == IBusColon && !e.isEmojiLTOpened {
-		e.resetBuffer()
-		e.isEmojiLTOpened = true
-		e.lastKeyWithShift = true
-		e.openEmojiList()
-		return true, nil
-	}
-	if e.isInputModeLTOpened {
-		return e.ltProcessKeyEvent(keyVal, keyCode, state)
-	}
-	if e.isEmojiLTOpened {
-		return e.emojiProcessKeyEvent(keyVal, keyCode, state)
-	}
-	if e.englishMode {
-		e.updateLastKeyWithShift(keyVal, state)
-		return false, nil
+	fmt.Printf("\n")
+	log.Printf(">>>>ProcessKeyEvent >  %d | state %d keyVal 0x%04x | %c <<<<\n", len(keyPressChan), state, keyVal, rune(keyVal))
+	if ret, retValue := e.processShortcutKey(keyVal, keyCode, state); ret {
+		return retValue, nil
 	}
 	if e.inBackspaceWhiteList() {
 		return e.bsProcessKeyEvent(keyVal, keyCode, state)
@@ -118,29 +95,38 @@ func (e *IBusBambooEngine) ProcessKeyEvent(keyVal uint32, keyCode uint32, state 
 
 func (e *IBusBambooEngine) FocusIn() *dbus.Error {
 	log.Print("FocusIn.")
-	var oldWmClasses = e.wmClasses
-	e.wmClasses = x11GetFocusWindowClass()
-	fmt.Printf("WM_CLASS=(%s)\n", e.wmClasses)
-
+	var latestWm = e.getLatestWmClass()
+	e.checkWmClass(latestWm)
 	e.RegisterProperties(e.propList)
 	e.RequireSurroundingText()
-	if oldWmClasses != e.wmClasses {
-		e.resetBuffer()
-		e.resetFakeBackspace()
+	if e.isShortcutKeyEnable(KSEmojiDialog) && emojiTrie != nil && len(emojiTrie.Children) == 0 {
+		var err error
+		emojiTrie, err = loadEmojiOne(DictEmojiOne)
+		if err != nil {
+			panic(fmt.Sprintf("failed to load emojiTrie from %s: %s", DictEmojiOne, err))
+		}
 	}
+	if e.config.IBflags&IBspellCheckWithDicts != 0 && len(dictionary) == 0 {
+		dictionary, _ = loadDictionary(DictVietnameseCm)
+	}
+	if inStringList(disabledMouseCapturingList, e.getWmClass()) {
+		stopMouseCapturing()
+	} else if e.config.IBflags&IBmouseCapturing != 0 {
+		startMouseCapturing()
+	}
+	fmt.Printf("WM_CLASS=(%s)\n", e.getWmClass())
 	return nil
 }
 
 func (e *IBusBambooEngine) FocusOut() *dbus.Error {
 	log.Print("FocusOut.")
-	//e.wmClasses = ""
 	return nil
 }
 
 func (e *IBusBambooEngine) Reset() *dbus.Error {
 	fmt.Print("Reset.\n")
 	if e.checkInputMode(preeditIM) {
-		e.commitPreedit(e.getPreeditString())
+		e.commitPreeditAndReset(e.getPreeditString())
 	}
 	return nil
 }
@@ -156,7 +142,7 @@ func (e *IBusBambooEngine) Disable() *dbus.Error {
 	return nil
 }
 
-//@method(in_signature="vuu")
+// @method(in_signature="vuu")
 func (e *IBusBambooEngine) SetSurroundingText(text dbus.Variant, cursorPos uint32, anchorPos uint32) *dbus.Error {
 	if !e.isSurroundingTextReady {
 		//fmt.Println("Surrounding Text is not ready yet.")
@@ -255,7 +241,7 @@ func (e *IBusBambooEngine) SetContentType(purpose uint32, hints uint32) *dbus.Er
 	return nil
 }
 
-//@method(in_signature="su")
+// @method(in_signature="su")
 func (e *IBusBambooEngine) PropertyActivate(propName string, propState uint32) *dbus.Error {
 	if propName == PropKeyAbout {
 		exec.Command("xdg-open", HomePage).Start()
@@ -266,8 +252,11 @@ func (e *IBusBambooEngine) PropertyActivate(propName string, propState uint32) *
 		return nil
 	}
 	if propName == PropKeyConfiguration {
-		exec.Command("xdg-open", getConfigPath(e.engineName)).Start()
+		exec.Command("/usr/lib/ibus-bamboo/macro-editor", getConfigPath(e.engineName)).Start()
 		return nil
+	}
+	if propName == PropKeyInputModeLookupTableShortcut {
+		e.openShortcutsGUI()
 	}
 	if propName == PropKeyMacroTable {
 		OpenMactabFile(e.engineName)
@@ -284,15 +273,6 @@ func (e *IBusBambooEngine) PropertyActivate(propName string, propState uint32) *
 		} else {
 			e.config.IBflags &= ^IBspellCheckEnabled
 			e.config.IBflags &= ^IBautoNonVnRestore
-		}
-	}
-
-	if propName == PropKeyEmojiEnabled {
-		if propState == ibus.PROP_STATE_CHECKED {
-			e.config.IBflags &= ^IBemojiDisabled
-			emojiTrie, _ = loadEmojiOne(DictEmojiOne)
-		} else {
-			e.config.IBflags |= IBemojiDisabled
 		}
 	}
 
@@ -338,15 +318,16 @@ func (e *IBusBambooEngine) PropertyActivate(propName string, propState uint32) *
 		if propState == ibus.PROP_STATE_CHECKED {
 			e.config.IBflags |= IBmouseCapturing
 			startMouseCapturing()
+			startMouseRecording()
 		} else {
 			e.config.IBflags &= ^IBmouseCapturing
 			stopMouseCapturing()
+			stopMouseRecording()
 		}
 	}
 	if propName == PropKeyMacroEnabled {
 		if propState == ibus.PROP_STATE_CHECKED {
 			e.config.IBflags |= IBmacroEnabled
-			e.config.IBflags |= IBautoCapitalizeMacro
 			e.macroTable.Enable(e.engineName)
 		} else {
 			e.config.IBflags &= ^IBmacroEnabled
@@ -355,9 +336,9 @@ func (e *IBusBambooEngine) PropertyActivate(propName string, propState uint32) *
 	}
 	if propName == PropKeyPreeditInvisibility {
 		if propState == ibus.PROP_STATE_CHECKED {
-			e.config.IBflags |= IBpreeditInvisibility
+			e.config.IBflags |= IBnoUnderline
 		} else {
-			e.config.IBflags &= ^IBpreeditInvisibility
+			e.config.IBflags &= ^IBnoUnderline
 		}
 	}
 	if propName == PropKeyPreeditElimination {
@@ -367,33 +348,14 @@ func (e *IBusBambooEngine) PropertyActivate(propName string, propState uint32) *
 			e.config.IBflags &= ^IBpreeditElimination
 		}
 	}
-	if propName == PropKeyRestoreKeyStrokes {
-		if propState == ibus.PROP_STATE_CHECKED {
-			e.config.IBflags |= IBrestoreKeyStrokesEnabled
-		} else {
-			e.config.IBflags &= ^IBrestoreKeyStrokesEnabled
-		}
-	}
-	if propName == PropKeyInputModeLookupTable {
-		if propState == ibus.PROP_STATE_CHECKED {
-			e.config.IBflags |= IBinputModeLookupTableEnabled
-		} else {
-			e.config.IBflags &= ^IBinputModeLookupTableEnabled
-		}
-	}
-	if propName == PropKeyIMQuickSwitchEnabled {
-		if propState == ibus.PROP_STATE_CHECKED {
-			e.config.IBflags |= IBimQuickSwitchEnabled
-		} else {
-			e.config.IBflags &= ^IBimQuickSwitchEnabled
-		}
-		e.englishMode = false
-	}
 	if propName == PropKeyAutoCapitalizeMacro {
 		if propState == ibus.PROP_STATE_CHECKED {
 			e.config.IBflags |= IBautoCapitalizeMacro
 		} else {
 			e.config.IBflags &= ^IBautoCapitalizeMacro
+		}
+		if e.config.IBflags&IBmacroEnabled != 0 {
+			e.macroTable.Reload(e.engineName, e.config.IBflags&IBautoCapitalizeMacro != 0)
 		}
 	}
 

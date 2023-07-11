@@ -66,36 +66,47 @@ const (
 	usIM
 )
 
+// Keyboard Shortcuts with keyVal-mask position
+const (
+	KSInputModeSwitch uint = iota * 2
+	KSRestoreKeyStrokes
+	KSViEnSwitch
+	KSEmojiDialog
+	KSHexadecimal
+)
+
 const (
 	IBautoCommitWithVnNotMatch uint = 1 << iota
 	IBmacroEnabled
-	IBautoCommitWithVnFullMatch
-	IBautoCommitWithVnWordBreak
+	_IBautoCommitWithVnFullMatch //deprecated
+	_IBautoCommitWithVnWordBreak //deprecated
 	IBspellCheckEnabled
 	IBautoNonVnRestore
 	IBddFreeStyle
-	IBpreeditInvisibility
+	IBnoUnderline
 	IBspellCheckWithRules
 	IBspellCheckWithDicts
 	IBautoCommitWithDelay
 	IBautoCommitWithMouseMovement
-	IBemojiDisabled
+	_IBemojiDisabled //deprecated
 	IBpreeditElimination
-	IBinputModeLookupTableEnabled
+	_IBinputModeLookupTableEnabled //deprecated
 	IBautoCapitalizeMacro
-	IBimQuickSwitchEnabled
-	IBrestoreKeyStrokesEnabled
+	_IBimQuickSwitchEnabled     //deprecated
+	_IBrestoreKeyStrokesEnabled //deprecated
 	IBmouseCapturing
 	IBstdFlags = IBspellCheckEnabled | IBspellCheckWithRules | IBautoNonVnRestore | IBddFreeStyle |
-		IBemojiDisabled | IBinputModeLookupTableEnabled | IBmouseCapturing
+		IBmouseCapturing | IBautoCapitalizeMacro | IBnoUnderline
 )
 
-const (
-	JemojiEnabled uint = 1 << iota
-	JmacroEnabled
-	JmacroAutoCapitalize
-	JstdFlags = JmacroAutoCapitalize
-)
+var enabledAuxiliaryTextList = []string{
+	"wpsoffice:wpsoffice",
+}
+
+var disabledMouseCapturingList = []string{
+	"DesktopEditors",                //onlyoffice
+	"DesktopEditors:DesktopEditors", //onlyoffice
+}
 
 var DefaultBrowserList = []string{
 	"Navigator:Firefox",
@@ -127,7 +138,7 @@ type Config struct {
 	OutputCharset          string
 	Flags                  uint
 	IBflags                uint
-	JupiterFlags           uint
+	Shortcuts              [10]uint32
 	DefaultInputMode       int
 	InputModeMapping       map[string]int
 }
@@ -135,9 +146,9 @@ type Config struct {
 func getConfigDir(ngName string) string {
 	u, err := user.Current()
 	if err == nil {
-		return fmt.Sprintf(configDir, u.HomeDir, ngName)
+		return fmt.Sprintf(configDir, u.HomeDir, "bamboo")
 	}
-	return fmt.Sprintf(configDir, "~", ngName)
+	return fmt.Sprintf(configDir, "~", "bamboo")
 }
 
 func setupConfigDir(ngName string) {
@@ -152,8 +163,10 @@ func getConfigPath(engineName string) string {
 
 func loadConfig(engineName string) *Config {
 	var flags = IBstdFlags
-	if isGnome {
-		flags &= ^IBmouseCapturing
+	var defaultIM = preeditIM
+	if engineName == "bamboous" {
+		defaultIM = usIM
+		flags = 0
 	}
 	var c = Config{
 		InputMethod:            "Telex",
@@ -161,7 +174,8 @@ func loadConfig(engineName string) *Config {
 		InputMethodDefinitions: bamboo.GetInputMethodDefinitions(),
 		Flags:                  bamboo.EstdFlags,
 		IBflags:                flags,
-		DefaultInputMode:       preeditIM,
+		Shortcuts:              [10]uint32{1, 126, 0, 0, 0, 0, 0, 0, 5, 117},
+		DefaultInputMode:       defaultIM,
 		InputModeMapping:       map[string]int{},
 	}
 
